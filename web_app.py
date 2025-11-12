@@ -6,12 +6,14 @@ Provides web interface for MC sampling, subset selection, and matching/inference
 
 from flask import Flask, render_template, jsonify, request, send_file
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 import os
 import json
 import traceback
 import tempfile
 import subprocess
 import sys
+import pandas as pd
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
@@ -283,7 +285,7 @@ def list_outputs():
     
     # Check data directory
     for f in ['mc_results.csv', 'subset_for_atmosphere.csv', 
-              'atmosphere_results.csv', 'strata.csv']:
+              'atmosphere_results.csv', 'strata.csv', 'final_position.csv']:
         if os.path.exists(os.path.join(DATA_DIR, f)):
             outputs['data_files'].append(f)
     
@@ -294,6 +296,137 @@ def list_outputs():
                 outputs['output_files'].append(f)
     
     return jsonify(outputs)
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """Handle file uploads for strata or final position."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        file_type = request.form.get('type', 'strata')  # 'strata' or 'final_position'
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
+        
+        # Validate file type
+        if not file.filename.endswith('.csv'):
+            return jsonify({'success': False, 'error': 'File must be a CSV'}), 400
+        
+        # Determine target filename
+        if file_type == 'strata':
+            filename = 'strata.csv'
+        elif file_type == 'final_position':
+            filename = 'final_position.csv'
+            # Also save as atmosphere_results.csv for compatibility
+            filename_alt = 'atmosphere_results.csv'
+        else:
+            return jsonify({'success': False, 'error': 'Invalid file type'}), 400
+        
+        # Save file
+        filepath = os.path.join(DATA_DIR, filename)
+        file.save(filepath)
+        
+        # Also save as atmosphere_results.csv if it's final_position
+        if file_type == 'final_position':
+            filepath_alt = os.path.join(DATA_DIR, filename_alt)
+            import shutil
+            shutil.copy(filepath, filepath_alt)
+        
+        # Validate CSV structure
+        try:
+            df = pd.read_csv(filepath)
+            row_count = len(df)
+            col_count = len(df.columns)
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid CSV file: {str(e)}'
+            }), 400
+        
+        return jsonify({
+            'success': True,
+            'message': f'File uploaded successfully: {filename}',
+            'filename': filename,
+            'rows': row_count,
+            'columns': col_count,
+            'column_names': df.columns.tolist()
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/api/analyze_matching', methods=['POST'])
+def analyze_matching():
+    """Analyze matching with uploaded strata and final position files."""
+    try:
+        # Check required files
+        strata_csv = os.path.join(DATA_DIR, "strata.csv")
+        final_pos_csv = os.path.join(DATA_DIR, "final_position.csv")
+        atm_csv = os.path.join(DATA_DIR, "atmosphere_results.csv")
+        mc_csv = os.path.join(DATA_DIR, "mc_results.csv")
+        
+        missing = []
+        if not os.path.exists(strata_csv):
+            missing.append('strata.csv')
+        if not os.path.exists(final_pos_csv) and not os.path.exists(atm_csv):
+            missing.append('final_position.csv or atmosphere_results.csv')
+        if not os.path.exists(mc_csv):
+            missing.append('mc_results.csv')
+        
+        if missing:
+            return jsonify({
+                'success': False,
+                'error': f'Missing required files: {", ".join(missing)}. Please upload files first.'
+            }), 400
+        
+        # Run match_and_infer
+        result = subprocess.run(
+            [sys.executable, 'match_and_infer.py'],
+            capture_output=True,
+            text=True,
+            cwd=os.getcwd()
+        )
+        
+        if result.returncode != 0:
+            return jsonify({
+                'success': False,
+                'error': result.stderr,
+                'stdout': result.stdout
+            }), 500
+        
+        # Load results for analysis
+        analysis = {}
+        if os.path.exists(os.path.join(OUT_DIR, 'posterior_histograms.csv')):
+            posterior_df = pd.read_csv(os.path.join(OUT_DIR, 'posterior_histograms.csv'))
+            analysis['posterior_summary'] = {
+                'total_bins': len(posterior_df),
+                'layers': posterior_df['layer_id'].nunique() if 'layer_id' in posterior_df.columns else 0,
+                'total_probability': float(posterior_df['posterior_prob'].sum()) if 'posterior_prob' in posterior_df.columns else 0
+            }
+        
+        # Check for plot
+        plot_exists = os.path.exists(os.path.join(OUT_DIR, 'posterior_plot.png'))
+        
+        return jsonify({
+            'success': True,
+            'message': 'Matching analysis completed',
+            'analysis': analysis,
+            'plot_available': plot_exists,
+            'stdout': result.stdout
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8081))

@@ -48,9 +48,23 @@
                     </div>
 
                     <div class="step-section">
-                        <h3>4. Match & Infer</h3>
-                        <p class="help-text">Requires atmosphere_results.csv and strata.csv</p>
-                        <button id="runMatch" class="btn-secondary">Run Matching</button>
+                        <h3>4. Upload Files</h3>
+                        <div class="upload-group">
+                            <label for="strataFile">Upload Strata CSV:</label>
+                            <input type="file" id="strataFile" accept=".csv" style="margin-bottom: 10px;">
+                            <button id="uploadStrata" class="btn-secondary">Upload Strata</button>
+                        </div>
+                        <div class="upload-group" style="margin-top: 15px;">
+                            <label for="finalPosFile">Upload Final Position CSV:</label>
+                            <input type="file" id="finalPosFile" accept=".csv" style="margin-bottom: 10px;">
+                            <button id="uploadFinalPos" class="btn-secondary">Upload Final Position</button>
+                        </div>
+                    </div>
+
+                    <div class="step-section">
+                        <h3>5. Analyze Matching</h3>
+                        <p class="help-text">Analyze matching with uploaded strata and final position files</p>
+                        <button id="analyzeMatching" class="btn-primary">Analyze Matching</button>
                     </div>
                 </div>
 

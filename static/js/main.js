@@ -270,6 +270,158 @@ async function loadOutputs() {
 // Refresh outputs button
 document.getElementById('refreshOutputs').addEventListener('click', loadOutputs);
 
+// Upload Strata File
+document.getElementById('uploadStrata').addEventListener('click', async () => {
+    const fileInput = document.getElementById('strataFile');
+    const button = document.getElementById('uploadStrata');
+    
+    if (!fileInput.files.length) {
+        alert('Please select a file first');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('type', 'strata');
+    
+    button.disabled = true;
+    showStatus('Uploading strata file...', 50);
+    
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showStatus(data.message, 100);
+            setTimeout(() => {
+                hideStatus();
+                loadOutputs();
+            }, 2000);
+        } else {
+            showStatus(`Error: ${data.error}`, 0);
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        showStatus(`Error: ${error.message}`, 0);
+        alert(`Error: ${error.message}`);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+// Upload Final Position File
+document.getElementById('uploadFinalPos').addEventListener('click', async () => {
+    const fileInput = document.getElementById('finalPosFile');
+    const button = document.getElementById('uploadFinalPos');
+    
+    if (!fileInput.files.length) {
+        alert('Please select a file first');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('type', 'final_position');
+    
+    button.disabled = true;
+    showStatus('Uploading final position file...', 50);
+    
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showStatus(data.message, 100);
+            setTimeout(() => {
+                hideStatus();
+                loadOutputs();
+            }, 2000);
+        } else {
+            showStatus(`Error: ${data.error}`, 0);
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        showStatus(`Error: ${error.message}`, 0);
+        alert(`Error: ${error.message}`);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+// Analyze Matching
+document.getElementById('analyzeMatching').addEventListener('click', async () => {
+    const button = document.getElementById('analyzeMatching');
+    
+    button.disabled = true;
+    showStatus('Analyzing matching...', 30);
+    
+    try {
+        const response = await fetch('/api/analyze_matching', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showStatus('Analysis completed!', 100);
+            
+            // Display analysis results
+            if (data.analysis) {
+                const container = document.getElementById('resultsContent');
+                let html = '<h3>Matching Analysis Results</h3>';
+                
+                if (data.analysis.posterior_summary) {
+                    const summary = data.analysis.posterior_summary;
+                    html += `
+                        <div class="stat-grid">
+                            <div class="stat-card">
+                                <h4>Total Bins</h4>
+                                <div class="value">${summary.total_bins}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h4>Layers</h4>
+                                <div class="value">${summary.layers}</div>
+                            </div>
+                            <div class="stat-card">
+                                <h4>Total Probability</h4>
+                                <div class="value">${summary.total_probability.toFixed(4)}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                if (data.plot_available) {
+                    html += '<p>Posterior plot available in outputs/</p>';
+                }
+                
+                container.innerHTML = html;
+            }
+            
+            setTimeout(() => {
+                hideStatus();
+                loadOutputs();
+            }, 2000);
+        } else {
+            showStatus(`Error: ${data.error}`, 0);
+            alert(`Error: ${data.error}`);
+        }
+    } catch (error) {
+        showStatus(`Error: ${error.message}`, 0);
+        alert(`Error: ${error.message}`);
+    } finally {
+        button.disabled = false;
+    }
+});
+
 // Load outputs on page load
 loadOutputs();
 

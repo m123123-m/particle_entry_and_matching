@@ -63,6 +63,28 @@ EM_THRESHOLD = 0.5e-6  # m
 SEED = 42
 np.random.seed(SEED)
 
+# Solar constants for β calculation
+SUN_MASS = 1.989e30  # kg
+AU = 1.496e11  # m
+SOLAR_LUMINOSITY = 3.828e26  # W
+C = 2.998e8  # m/s
+G_SUN = 6.67430e-11 * SUN_MASS  # GM_sun
+
+# Orbital element distributions (literature-based)
+# Semi-major axis (AU) - typical ranges
+A_RANGES = {
+    "asteroid": (2.0, 3.5),  # Main belt
+    "comet": (3.0, 50.0),    # Kuiper belt to Oort cloud
+    "interstellar": (100.0, 1000.0)  # Hyperbolic/unbound
+}
+
+# Eccentricity distributions
+E_DISTRIBUTIONS = {
+    "asteroid": (0.1, 0.3),  # (mean, std) for normal distribution
+    "comet": (0.7, 0.2),
+    "interstellar": (1.1, 0.1)  # Hyperbolic
+}
+
 # ------ Helper samplers ------
 def sample_power_law(rmin, rmax, q, size):
     exponent = 1.0 - q
@@ -97,6 +119,79 @@ def sample_directions(incl_sigma_deg, nsamples):
         vecs[i] = direction_from_inclination_azimuth(inc, az)
     vecs /= np.linalg.norm(vecs, axis=1)[:, None]
     return vecs
+
+def compute_beta(r, rho, material):
+    """
+    Compute radiation pressure parameter β = F_rad / F_grav.
+    β = 5.7 × 10^-5 * Q_pr / (r * rho) for r in meters, rho in kg/m³
+    Simplified: β ≈ 0.2 / (r_μm * rho_g_cm3) for typical Q_pr ≈ 1
+    """
+    r_um = r * 1e6  # convert to micrometers
+    rho_g_cm3 = rho / 1000.0  # convert to g/cm³
+    
+    # Q_pr (radiation pressure efficiency) depends on size and material
+    # For simplicity, use Q_pr ≈ 1 for r > 0.5 μm, smaller for very small grains
+    if r < 0.1e-6:  # Very small grains
+        Q_pr = 0.5
+    elif r < 0.5e-6:
+        Q_pr = 0.8
+    else:
+        Q_pr = 1.0
+    
+    # β = (3 * L_sun * Q_pr) / (16 * π * c * G * M_sun * r * rho)
+    # Simplified formula: β ≈ 5.7e-5 * Q_pr / (r_m * rho_kg_m3)
+    if r_um > 0 and rho_g_cm3 > 0:
+        beta = 5.7e-5 * Q_pr / (r * rho)
+    else:
+        beta = 0.0
+    
+    return beta
+
+def sample_orbital_elements(source, n_samples):
+    """
+    Sample orbital elements (a, e, i, Ω, ω, M) from literature distributions.
+    Returns: array of shape (n_samples, 6) with [a, e, i, Ω, ω, M]
+    All angles in radians.
+    """
+    a_min, a_max = A_RANGES[source]
+    e_mean, e_std = E_DISTRIBUTIONS[source]
+    
+    # Semi-major axis: log-uniform for asteroids/comets, uniform for interstellar
+    if source == "interstellar":
+        a = np.random.uniform(a_min, a_max, n_samples)
+    else:
+        # Log-uniform distribution
+        log_a_min = np.log10(a_min)
+        log_a_max = np.log10(a_max)
+        a = 10**(np.random.uniform(log_a_min, log_a_max, n_samples))
+    
+    # Eccentricity: normal distribution clipped to valid range
+    e = np.random.normal(e_mean, e_std, n_samples)
+    if source == "interstellar":
+        e = np.clip(e, 1.0, 2.0)  # Hyperbolic orbits
+    else:
+        e = np.clip(e, 0.0, 0.99)  # Elliptical orbits
+    
+    # Inclination: depends on source
+    if source == "asteroid":
+        i = np.abs(np.random.normal(0.0, math.radians(10.0), n_samples))
+    elif source == "comet":
+        i = np.abs(np.random.normal(0.0, math.radians(30.0), n_samples))
+    else:  # interstellar
+        i = np.arccos(np.random.uniform(-1.0, 1.0, n_samples))  # Isotropic
+    
+    i = np.clip(i, 0.0, math.pi)
+    
+    # Longitude of ascending node: uniform [0, 2π]
+    Omega = np.random.uniform(0.0, 2*math.pi, n_samples)
+    
+    # Argument of periapsis: uniform [0, 2π]
+    omega = np.random.uniform(0.0, 2*math.pi, n_samples)
+    
+    # Mean anomaly: uniform [0, 2π]
+    M = np.random.uniform(0.0, 2*math.pi, n_samples)
+    
+    return np.column_stack([a, e, i, Omega, omega, M])
 
 def sample_perp_unit_vectors(uvecs):
     n = uvecs.shape[0]
@@ -133,6 +228,20 @@ def run_mc(n_samples=N_SAMPLES):
         materials[i] = mat; densities[i] = DENSITIES[mat]
     
     mass = 4.0/3.0 * math.pi * r**3 * densities
+    
+    # compute β (radiation pressure parameter)
+    beta = np.array([compute_beta(r[i], densities[i], materials[i]) for i in range(n_samples)])
+    
+    # sample orbital elements (a, e, i, Ω, ω, M)
+    orbital_elements = {}
+    for s in SOURCES:
+        mask = (src_choices == s)
+        if mask.any():
+            elements = sample_orbital_elements(s, mask.sum())
+            for i, elem_name in enumerate(['a_AU', 'e', 'i_rad', 'Omega_rad', 'omega_rad', 'M_rad']):
+                if elem_name not in orbital_elements:
+                    orbital_elements[elem_name] = np.empty(n_samples)
+                orbital_elements[elem_name][mask] = elements[:, i]
     
     # v_inf
     v_inf = np.empty(n_samples)
@@ -175,12 +284,14 @@ def run_mc(n_samples=N_SAMPLES):
     # output dataframe
     sim_ids = np.arange(1, n_samples + 1, dtype=int)
     
-    df = pd.DataFrame({
+    # Build dataframe with all fields including orbital elements and β
+    df_dict = {
         "sim_id": sim_ids,
         "source": src_choices,
         "r_m": r,
         "mass_kg": mass,
         "rho_kg_m3": densities,
+        "beta": beta,  # Radiation pressure parameter
         "v_inf_m_s": v_inf,
         "v_entry_m_s": v_entry,
         "vx_entry_m_s": v_entry_vec[:, 0],
@@ -194,7 +305,19 @@ def run_mc(n_samples=N_SAMPLES):
         "timestamp_utc": [datetime.now(timezone.utc).isoformat()]*n_samples,
         "em_flag": r < EM_THRESHOLD,
         "notes": ["" for _ in range(n_samples)]
-    })
+    }
+    
+    # Add orbital elements
+    for elem_name, elem_values in orbital_elements.items():
+        df_dict[elem_name] = elem_values
+    
+    # Convert angles to degrees for readability (keep radians too)
+    df_dict['i_deg'] = np.degrees(orbital_elements['i_rad'])
+    df_dict['Omega_deg'] = np.degrees(orbital_elements['Omega_rad'])
+    df_dict['omega_deg'] = np.degrees(orbital_elements['omega_rad'])
+    df_dict['M_deg'] = np.degrees(orbital_elements['M_rad'])
+    
+    df = pd.DataFrame(df_dict)
     
     return df
 
