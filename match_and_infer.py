@@ -41,23 +41,42 @@ def haversine_m(lat1, lon1, lat2, lon2):
 
 def load_frag_hist(row, prefix="frag_hist_"):
     # collect columns frag_hist_0, frag_hist_1, ... OR parse JSON in frag_hist_json
-    keys = [c for c in row.index if c.startswith(prefix)]
-    if keys:
-        return row[keys].values.astype(float)
+    # Check for frag_hist_json first (higher priority)
     if 'frag_hist_json' in row.index:
         frag_str = row['frag_hist_json']
+        if pd.isna(frag_str) or frag_str == '':
+            return None
         if isinstance(frag_str, str):
             # Try to parse as JSON
             try:
                 return np.array(json.loads(frag_str), dtype=float)
             except (json.JSONDecodeError, ValueError):
-                # If JSON fails, try eval as list
-                try:
-                    return np.array(eval(frag_str), dtype=float)
-                except:
-                    return None
+                # If JSON fails, try eval as list (for safety, only if it looks like a list)
+                if frag_str.strip().startswith('['):
+                    try:
+                        return np.array(eval(frag_str), dtype=float)
+                    except:
+                        return None
+                return None
         else:
+            # Already an array or list
             return np.array(frag_str, dtype=float)
+    
+    # Otherwise check for frag_hist_* columns (numeric columns only)
+    keys = [c for c in row.index if c.startswith(prefix) and c != 'frag_hist_json']
+    if keys:
+        # Sort keys to ensure consistent order
+        keys = sorted(keys)
+        try:
+            values = row[keys].values
+            # Check if values are numeric (not strings)
+            if isinstance(values[0], str):
+                # If it's a string, it might be a JSON string, skip these columns
+                return None
+            return values.astype(float)
+        except (ValueError, TypeError):
+            # If conversion fails, return None
+            return None
     return None
 
 def hist_chi2(obs, sim):
@@ -97,11 +116,11 @@ if __name__ == "__main__":
     # for strata, get obs hist arrays
     strata_hist_list = []
     for _, row in strata.iterrows():
-        keys = [c for c in row.index if c.startswith('obs_hist_')]
-        if keys:
-            h = row[keys].values.astype(float)
-        elif 'obs_hist_json' in row.index:
+        # Check for obs_hist_json first (higher priority)
+        if 'obs_hist_json' in row.index:
             obs_str = row['obs_hist_json']
+            if pd.isna(obs_str) or obs_str == '':
+                raise RuntimeError(f"Empty obs_hist_json for layer {row.get('layer_id', 'unknown')}")
             if isinstance(obs_str, str):
                 try:
                     h = np.array(json.loads(obs_str), dtype=float)
@@ -113,7 +132,20 @@ if __name__ == "__main__":
             else:
                 h = np.array(obs_str, dtype=float)
         else:
-            raise RuntimeError("Strata must include obs_hist_* columns or obs_hist_json")
+            # Check for obs_hist_* columns (excluding obs_hist_json)
+            keys = [c for c in row.index if c.startswith('obs_hist_') and c != 'obs_hist_json']
+            if keys:
+                keys = sorted(keys)
+                try:
+                    values = row[keys].values
+                    # Check if values are numeric (not strings)
+                    if len(values) > 0 and isinstance(values[0], str):
+                        raise RuntimeError(f"obs_hist_* columns contain string values for layer {row.get('layer_id', 'unknown')}")
+                    h = values.astype(float)
+                except (ValueError, TypeError) as e:
+                    raise RuntimeError(f"Could not convert obs_hist_* columns to float for layer {row.get('layer_id', 'unknown')}: {e}")
+            else:
+                raise RuntimeError(f"Strata must include obs_hist_* columns or obs_hist_json for layer {row.get('layer_id', 'unknown')}")
         
         # pad or truncate to maxlen
         if len(h) < maxlen:
@@ -182,9 +214,15 @@ if __name__ == "__main__":
     print("Wrote posterior_histograms.csv")
     
     # quick plotting: sum posterior across strata to get global posterior
-    global_post = res_df.groupby('bin')['posterior_prob'].sum().reset_index()
-    if len(global_post) > 0:
-        mids = [(row['r_lo'] + row['r_hi'])/2.0 for _, row in global_post.iterrows()]
+    if len(res_df) > 0:
+        # Group by bin and sum probabilities, keeping radius bin info
+        global_post = res_df.groupby('bin').agg({
+            'posterior_prob': 'sum',
+            'r_lo': 'first',  # Keep first r_lo for each bin
+            'r_hi': 'first'   # Keep first r_hi for each bin
+        }).reset_index()
+        
+        mids = (global_post['r_lo'] + global_post['r_hi']) / 2.0
         plt.figure(figsize=(8,6))
         plt.bar(np.log10(mids), global_post['posterior_prob'], width=0.1)
         plt.xlabel("log10 radius (m)"); plt.ylabel("posterior probability (relative)")

@@ -105,7 +105,16 @@ if __name__ == "__main__":
     
     # run match and infer
     print("\n4. Running match_and_infer...")
-    import match_and_infer
-    print("\n5. Pipeline complete! Check outputs/ for results.")
+    import subprocess
+    import sys
+    result = subprocess.run([sys.executable, "match_and_infer.py"], 
+                          capture_output=True, text=True)
+    if result.returncode == 0:
+        print(result.stdout)
+        print("\n5. Pipeline complete! Check outputs/ for results.")
+    else:
+        print("Error running match_and_infer.py:")
+        print(result.stderr)
+        print(result.stdout)
     print("=" * 60)
 
