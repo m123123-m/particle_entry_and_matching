@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Entry and Matching Pipeline</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔬 Particle Entry and Matching Pipeline</h1>
+            <p class="subtitle">Monte Carlo simulation and Bayesian inference for cosmic dust</p>
+        </header>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="control-panel">
+                    <h2>Pipeline Steps</h2>
+                    
+                    <div class="step-section">
+                        <h3>1. MC Sampler</h3>
+                        <div class="form-group">
+                            <label for="n_samples">Number of Samples:</label>
+                            <input type="number" id="n_samples" value="100000" min="1000" max="10000000" step="1000">
+                        </div>
+                        <div class="form-group">
+                            <label for="seed">Random Seed:</label>
+                            <input type="number" id="seed" value="42">
+                        </div>
+                        <button id="runMC" class="btn-primary">Run MC Sampler</button>
+                    </div>
+
+                    <div class="step-section">
+                        <h3>2. Select Subset</h3>
+                        <div class="form-group">
+                            <label for="n_target">Target Subset Size:</label>
+                            <input type="number" id="n_target" value="20000" min="1000" max="100000" step="1000">
+                        </div>
+                        <button id="runSubset" class="btn-primary">Create Subset</button>
+                    </div>
+
+                    <div class="step-section">
+                        <h3>3. Demo Pipeline</h3>
+                        <p class="help-text">Runs full pipeline with synthetic data</p>
+                        <button id="runDemo" class="btn-secondary">Run Demo</button>
+                    </div>
+
+                    <div class="step-section">
+                        <h3>4. Match & Infer</h3>
+                        <p class="help-text">Requires atmosphere_results.csv and strata.csv</p>
+                        <button id="runMatch" class="btn-secondary">Run Matching</button>
+                    </div>
+                </div>
+
+                <div class="status-panel" id="statusPanel" style="display: none;">
+                    <h3>Status</h3>
+                    <div id="statusText">Ready</div>
+                    <div class="progress-bar">
+                        <div id="progressBar" class="progress-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-area">
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="results">Results</button>
+                    <button class="tab-button" data-tab="outputs">Outputs</button>
+                    <button class="tab-button" data-tab="about">About</button>
+                </div>
+
+                <div id="resultsTab" class="tab-content active">
+                    <div class="results-container">
+                        <h2>Simulation Results</h2>
+                        <div id="resultsContent">
+                            <p class="placeholder">Run a simulation step to see results</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="outputsTab" class="tab-content">
+                    <div class="outputs-container">
+                        <h2>Available Files</h2>
+                        <div id="outputsContent">
+                            <button id="refreshOutputs" class="btn-secondary">Refresh List</button>
+                            <div id="filesList"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="aboutTab" class="tab-content">
+                    <div class="about-container">
+                        <h2>About This Pipeline</h2>
+                        <p>This pipeline implements Monte Carlo simulation and Bayesian inference for cosmic dust particle entry into Earth's atmosphere.</p>
+                        
+                        <h3>Pipeline Steps</h3>
+                        <ol>
+                            <li><strong>MC Sampler</strong>: Generates Monte Carlo samples of incoming cosmic dust particles</li>
+                            <li><strong>Select Subset</strong>: Creates stratified subset for atmosphere team</li>
+                            <li><strong>Demo Pipeline</strong>: End-to-end demonstration with synthetic data</li>
+                            <li><strong>Match & Infer</strong>: Bayesian inference from atmosphere outputs and strata observations</li>
+                        </ol>
+
+                        <h3>Output Files</h3>
+                        <ul>
+                            <li><code>data/mc_results.csv</code>: Full MC sample dataset</li>
+                            <li><code>data/subset_for_atmosphere.csv</code>: Stratified subset</li>
+                            <li><code>outputs/posterior_histograms.csv</code>: Posterior distributions</li>
+                            <li><code>outputs/posterior_plot.png</code>: Visualization</li>
+                            <li><code>outputs/diagnostics_*.png</code>: Diagnostic plots</li>
+                        </ul>
+
+                        <h3>Repository</h3>
+                        <p><a href="https://github.com/m123123-m/particle_entry_and_matching" target="_blank">GitHub Repository</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
+
