@@ -14,7 +14,8 @@ Schema (CSV columns): sim_id, source, r_m, mass_kg, rho_kg_m3,
   lat_entry_deg, lon_entry_deg, alt_entry_m, b_m, weight_rel, timestamp_utc, em_flag, notes
 """
 
-import os, json, math, datetime
+import os, json, math
+from datetime import datetime, timezone
 import numpy as np, pandas as pd
 
 # ------ Configurable parameters ------
@@ -190,7 +191,7 @@ def run_mc(n_samples=N_SAMPLES):
         "alt_entry_m": np.full(n_samples, H0),
         "b_m": b_mag,
         "weight_rel": np.ones(n_samples) / float(n_samples),
-        "timestamp_utc": [datetime.datetime.utcnow().isoformat()]*n_samples,
+        "timestamp_utc": [datetime.now(timezone.utc).isoformat()]*n_samples,
         "em_flag": r < EM_THRESHOLD,
         "notes": ["" for _ in range(n_samples)]
     })
@@ -239,7 +240,7 @@ if __name__ == "__main__":
         "N_samples": int(len(df)),
         "R_min_m": R_MIN, "R_max_m": R_MAX, "q": Q,
         "source_fracs": SRC_FRACS.tolist(), "V_params": V_PARAMS, "h0_m": H0,
-        "run_time_utc": datetime.datetime.utcnow().isoformat(), "seed": SEED
+        "run_time_utc": datetime.now(timezone.utc).isoformat(), "seed": SEED
     }
     with open(os.path.join(OUT_DIR, "run_metadata.json"), "w") as f:
         json.dump(meta, f, indent=2)
